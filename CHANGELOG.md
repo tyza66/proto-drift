@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- A `.proto-drift.toml` that parses but has the wrong shape is now reported as a usage error
+  (exit 2, `proto-drift: invalid config: ...`) instead of crashing with an `AttributeError` or
+  `TypeError` traceback. `[sdk]` given as a list, an `[sdk.<lang>]` entry given as a string,
+  a non-string `path`, `[protos]` given as a list and `[fail]` given as a list are all caught.
+  `[protos] paths` given as a bare string is rejected too: it used to iterate character by
+  character and silently find no `.proto` files at all. The check lives at the top of
+  `discover()`, so it covers a config file and a dict passed straight to `discover()` alike.
+
 ## [0.1.0] - 2026-10-07
 
 ### Added

@@ -5,7 +5,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from protodrift.scan import discover, map_stub, scan, stub_stem
+import pytest
+
+from protodrift.scan import ConfigError, discover, map_stub, scan, stub_stem
 
 T = 1_700_000_000.0
 
@@ -152,6 +154,37 @@ def test_unrepresented_language_is_not_missing(tmp_path):
 def test_no_missing_sdk_without_any_stub_in_repo(tmp_path):
     write(tmp_path / "api/v1/user.proto", 'syntax = "proto3";\n')
     assert scan(tmp_path) == []
+
+
+# --- config shape -----------------------------------------------------------
+
+
+@pytest.mark.parametrize("cfg,expected", [
+    ({"sdk": ["sdk/go"]}, "[sdk] must be a table"),
+    ({"sdk": {"go": "sdk/go"}}, "[sdk.go] must be a table"),
+    ({"sdk": {"go": {"path": 123}}}, "[sdk.go] path must be a string"),
+    ({"protos": ["api/v1"]}, "[protos] must be a table"),
+    # A bare string iterates character by character and finds no protos at all.
+    ({"protos": {"paths": "api/v1"}}, "[protos] paths must be a list of strings"),
+    ({"fail": ["on_stale"]}, "[fail] must be a table"),
+])
+def test_wrong_shaped_config_is_a_usage_error(tmp_path, cfg, expected):
+    # Valid TOML can still describe the wrong shape, and the scan assumes tables
+    # throughout: these used to raise AttributeError or TypeError from inside
+    # discover() instead of reporting a config problem (#27).
+    write(tmp_path / "api/v1/user.proto", 'syntax = "proto3";\n')
+    with pytest.raises(ConfigError) as excinfo:
+        discover(tmp_path, cfg)
+    assert expected in str(excinfo.value)
+
+
+def test_well_shaped_config_still_discovers(tmp_path):
+    write(tmp_path / "api/v1/user.proto", 'syntax = "proto3";\n')
+    write(tmp_path / "sdk/go/user.pb.go", GO_STUB)
+    tree = discover(tmp_path, {"protos": {"paths": ["api/v1"]},
+                               "sdk": {"go": {"path": "sdk/go"}}})
+    assert tree.proto_paths == [tmp_path / "api/v1/user.proto"]
+    assert tree.stubs == [tmp_path / "sdk/go/user.pb.go"]
 
 
 # --- clean tree -------------------------------------------------------------

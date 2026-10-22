@@ -9,6 +9,7 @@ from pathlib import Path
 
 from protodrift import SEVERITIES, __version__
 from protodrift.scan import (
+    ConfigError,
     Finding,
     discover,
     language_of,
@@ -150,7 +151,12 @@ def _cmd_check(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    return _cmd_scan(args) if args.command == "scan" else _cmd_check(args)
+    try:
+        return _cmd_scan(args) if args.command == "scan" else _cmd_check(args)
+    except ConfigError as exc:
+        # A wrong-shaped config is a usage error like a bad path, not a crash (#27).
+        print(f"proto-drift: invalid config: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

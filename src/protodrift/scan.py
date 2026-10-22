@@ -124,9 +124,45 @@ def map_stub(tree: Tree, stub: Path) -> Mapping:
     return Mapping(stub, language, None, "", ambiguous=len(matches) > 1)
 
 
+class ConfigError(ValueError):
+    """A config that parses but has the wrong shape: a usage error, not a crash."""
+
+
+def _kind(value: object) -> str:
+    return type(value).__name__
+
+
+def _table(value: object, key: str) -> dict:
+    if not isinstance(value, dict):
+        raise ConfigError(f"{key} must be a table, got {_kind(value)}")
+    return value
+
+
+def _validate_config(cfg: object) -> None:
+    """A config that parses can still describe the wrong shape, and the code below
+    assumes tables throughout: `.get()` on a list raises AttributeError and
+    `root / 123` raises TypeError, both from deep inside the scan.
+
+    Validated at the top of discover() because that is the one function every
+    caller reaches before anything reads the config, so a file on disk and a dict
+    handed straight to discover() are covered by the same check (#27)."""
+    _table(cfg, "config")
+    paths = _table(cfg.get("protos", {}), "[protos]").get("paths", [])
+    # A bare string iterates character by character and silently finds no protos
+    # at all, which is worse than a traceback.
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise ConfigError(f"[protos] paths must be a list of strings, got {_kind(paths)}")
+    for name, entry in _table(cfg.get("sdk", {}), "[sdk]").items():
+        path = _table(entry, f"[sdk.{name}]").get("path")
+        if path is not None and not isinstance(path, str):
+            raise ConfigError(f"[sdk.{name}] path must be a string, got {_kind(path)}")
+    _table(cfg.get("fail", {}), "[fail]")
+
+
 def discover(root: Path, cfg: dict | None = None) -> Tree:
     root = Path(root).resolve()
     cfg = cfg or {}
+    _validate_config(cfg)
     proto_roots = [root / p for p in cfg.get("protos", {}).get("paths", [])] or [root]
     tree = Tree(root=root)
     for proto_root in proto_roots:

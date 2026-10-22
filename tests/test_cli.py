@@ -131,3 +131,17 @@ def test_scan_without_path_uses_cwd(tmp_path, capsys, monkeypatch):
 def test_scan_bad_root_is_a_usage_error(tmp_path, capsys):
     assert main(["scan", str(tmp_path / "nope")]) == 2
     assert "not found" in capsys.readouterr().err
+
+
+def test_bad_config_shape_is_a_usage_error(tmp_path, capsys):
+    # Valid TOML, wrong shape: exit 2 with a proto-drift: message on the same
+    # path as a bad --root, not a traceback from inside the scan (#27).
+    drift_tree(tmp_path)
+    write(tmp_path, ".proto-drift.toml", 'sdk = ["sdk/go"]\n')
+    root = str(tmp_path)
+    assert main(["scan", root]) == 2
+    err = capsys.readouterr().err
+    assert "invalid config" in err
+    assert "[sdk] must be a table" in err
+    assert main(["check", "--proto", "api/v1/user.proto", "--sdk", "sdk/go", "--root", root]) == 2
+    assert "[sdk] must be a table" in capsys.readouterr().err
